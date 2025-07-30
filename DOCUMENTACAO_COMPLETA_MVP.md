@@ -520,6 +520,67 @@ CREATE TABLE unidade_cnd (
 );
 ```
 
+### Descrição Detalhada dos Campos
+
+#### **Campos de Identificação**
+| Campo | Tipo | Descrição | Exemplo |
+|-------|------|-----------|----------|
+| `id` | BIGSERIAL | **Chave primária** - Identificador único sequencial da CND | `1, 2, 3...` |
+| `codigo_validacao` | VARCHAR(50) | **Código único de validação** - Usado para validar e baixar a CND | `CND240315001` |
+| `unidade_id` | BIGINT | **ID da unidade** - Referência à tabela `unidade` (FK) | `1` |
+
+#### **Campos de Controle e Segurança**
+| Campo | Tipo | Descrição | Exemplo |
+|-------|------|-----------|----------|
+| `hash_parametros` | VARCHAR(255) | **Hash SHA-256** dos parâmetros de emissão para controle anti-fraude | `a1b2c3d4e5f6...` |
+| `status` | VARCHAR(20) | **Status atual** da CND no processo de assinatura | `PROCESSANDO`, `ASSINADO`, `ERRO` |
+| `canal_emissao` | VARCHAR(10) | **Canal** por onde foi solicitada a emissão | `WEB`, `API`, `MOBILE` |
+| `tentativas_emissao` | INTEGER | **Contador** de tentativas de emissão (controle anti-fraude) | `1, 2, 3...` |
+| `ip_origem` | VARCHAR(45) | **Endereço IP** de onde foi solicitada a emissão (auditoria) | `192.168.1.100` |
+
+#### **Campos de Documentos**
+| Campo | Tipo | Descrição | Exemplo |
+|-------|------|-----------|----------|
+| `documento_pdf` | BYTEA | **PDF original** gerado antes da assinatura digital | `[bytes do PDF]` |
+| `documento_assinado` | BYTEA | **PDF final** com assinatura digital aplicada | `[bytes do PDF assinado]` |
+| `codigo_plataforma` | VARCHAR(100) | **Código** retornado por plataforma externa de assinatura (futuro) | `ADOBE_12345` |
+
+#### **Campos de Assinatura Digital**
+| Campo | Tipo | Descrição | Exemplo |
+|-------|------|-----------|----------|
+| `dados_assinatura` | JSONB | **Metadados** da assinatura digital em formato JSON | Ver exemplo abaixo |
+
+**Exemplo do campo `dados_assinatura`**:
+```json
+{
+  "algoritmo": "SHA256withRSA",
+  "certificado": "CN=LLZ Garantidora, OU=TI, O=LLZ",
+  "timestamp": "2024-03-15T10:30:03",
+  "hash": "a1b2c3d4e5f6789abcdef..."
+}
+```
+
+#### **Campos de Data e Tempo**
+| Campo | Tipo | Descrição | Exemplo |
+|-------|------|-----------|----------|
+| `dt_criacao` | TIMESTAMP | **Data/hora** de criação do registro | `2024-03-15 10:30:00` |
+| `dt_assinatura` | TIMESTAMP | **Data/hora** em que a assinatura foi aplicada | `2024-03-15 10:30:03` |
+| `dt_expiracao` | TIMESTAMP | **Data/hora** de expiração da CND (30 dias) | `2024-04-14 10:30:00` |
+| `dt_alteracao` | TIMESTAMP | **Data/hora** da última alteração do registro | `2024-03-15 10:30:05` |
+
+#### **Campos de Auditoria**
+| Campo | Tipo | Descrição | Exemplo |
+|-------|------|-----------|----------|
+| `reg_ativo` | BOOLEAN | **Flag** indicando se o registro está ativo | `true`, `false` |
+| `usr_criacao` | BIGINT | **ID do usuário** que criou o registro | `1001` |
+| `usr_alteracao` | BIGINT | **ID do usuário** que fez a última alteração | `1002` |
+
+#### **Relacionamentos**
+| Campo | Relacionamento | Descrição |
+|-------|----------------|----------|
+| `unidade_id` | **FK → unidade(id)** | Referência à unidade para qual a CND foi emitida |
+| `unidade` | **@ManyToOne** | Objeto Unidade carregado via JPA (lazy loading) |
+
 ### Fluxo de Gravação dos Dados
 
 #### 1. **Emissão Inicial**
@@ -551,11 +612,54 @@ dadosAssinatura.put("hash", "hash_do_documento_assinado");
 cnd.setDadosAssinatura(dadosAssinatura);
 ```
 
-### Estados Possíveis
-- **PROCESSANDO**: CND emitida, aguardando assinatura
-- **ASSINADO**: CND assinada e disponível para download
-- **ERRO**: Erro no processamento da assinatura
-- **EXPIRADO**: CND fora da validade (30 dias)
+### Estados Possíveis do Campo `status`
+| Status | Descrição | Quando Ocorre |
+|--------|-----------|---------------|
+| `PROCESSANDO` | CND emitida, aguardando assinatura digital | Após criação do registro, antes da assinatura |
+| `ASSINADO` | CND assinada digitalmente e disponível para download | Após processamento bem-sucedido da assinatura |
+| `ERRO` | Erro no processamento da assinatura digital | Quando falha na assinatura ou carregamento do certificado |
+| `EXPIRADO` | CND fora da validade (30 dias após emissão) | Processo automático após data de expiração |
+
+### Índices Recomendados
+```sql
+-- Índice para busca por código de validação (mais usado)
+CREATE INDEX idx_unidade_cnd_codigo_validacao ON unidade_cnd(codigo_validacao);
+
+-- Índice para busca por unidade
+CREATE INDEX idx_unidade_cnd_unidade_id ON unidade_cnd(unidade_id);
+
+-- Índice para controle anti-fraude
+CREATE INDEX idx_unidade_cnd_hash_params ON unidade_cnd(hash_parametros, dt_criacao);
+
+-- Índice para limpeza de registros expirados
+CREATE INDEX idx_unidade_cnd_expiracao ON unidade_cnd(dt_expiracao, reg_ativo);
+```
+
+### Exemplo de Registro Completo
+```sql
+INSERT INTO unidade_cnd (
+    codigo_validacao, unidade_id, hash_parametros, status, canal_emissao,
+    documento_pdf, documento_assinado, dados_assinatura, dt_criacao,
+    dt_assinatura, dt_expiracao, tentativas_emissao, ip_origem,
+    reg_ativo, usr_criacao
+) VALUES (
+    'CND240315001',                           -- Código único
+    1,                                        -- ID da unidade
+    'sha256_hash_dos_parametros_aqui',        -- Hash anti-fraude
+    'ASSINADO',                               -- Status final
+    'WEB',                                    -- Canal de emissão
+    decode('PDF_BYTES_AQUI', 'base64'),       -- PDF original
+    decode('PDF_ASSINADO_BYTES_AQUI', 'base64'), -- PDF assinado
+    '{"algoritmo":"SHA256withRSA","certificado":"CN=LLZ Garantidora"}', -- Dados assinatura
+    '2024-03-15 10:30:00',                    -- Data criação
+    '2024-03-15 10:30:03',                    -- Data assinatura
+    '2024-04-14 10:30:00',                    -- Data expiração
+    1,                                        -- Primeira tentativa
+    '192.168.1.100',                          -- IP origem
+    true,                                     -- Registro ativo
+    1001                                      -- Usuário criador
+);
+```
 
 ---
 
