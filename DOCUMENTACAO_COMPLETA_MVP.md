@@ -412,6 +412,85 @@ keytool -list -keystore llz-test.p12 -storetype PKCS12 | grep "Valid"
 
 ---
 
+## 🔒 SOLUÇÃO DE SEGURANÇA AWS - CERTIFICADO DIGITAL
+
+### Problema Identificado
+Não será possível manter o certificado digital A1 na pasta  `resources` do projeto, considerando questões de segurança e compliance.
+
+### ✅ Solução Recomendada: AWS Secrets Manager + ECS
+
+#### Arquitetura de Segurança
+```
+┌─────────────────────────────────────────────┐
+│              AWS CLOUD SECURITY             │
+├─────────────────────────────────────────────┤
+│  AWS Secrets Manager                        │
+│  ├── llz-cnd-certificado-dev (444301769287) │
+│  ├── llz-cnd-certificado-hml (770248317149) │
+│  └── llz-cnd-certificado-prd (756241603306) │
+├─────────────────────────────────────────────┤
+│  ECS Task Role (IAM)                        │
+│  ├── SecretsManagerReadWrite                │
+│  └── SSMParameterReadOnly                   │
+├─────────────────────────────────────────────┤
+│  ECS Fargate Container                      │
+│  └── Spring Boot Application                │
+└─────────────────────────────────────────────┘
+```
+
+#### Benefícios de Segurança
+- ✅ **Certificado fora do código**: Armazenado no AWS Secrets Manager
+- ✅ **Acesso controlado**: IAM roles com permissões mínimas
+- ✅ **Auditoria completa**: CloudTrail registra todos os acessos
+- ✅ **Segregação por ambiente**: Certificados diferentes para DEV/HML/PRD
+- ✅ **Custo baixo**: ~$7/mês para máxima segurança
+
+#### Implementação Técnica
+```java
+@Service
+public class AwsSecretsService {
+    
+    public byte[] obterCertificado() {
+        GetSecretValueRequest request = GetSecretValueRequest.builder()
+            .secretId(certificadoSecretName)
+            .build();
+        
+        GetSecretValueResponse response = secretsManagerClient.getSecretValue(request);
+        return response.secretBinary().asByteArray();
+    }
+}
+```
+
+#### Configuração ECS
+```json
+{
+    "taskRoleArn": "arn:aws:iam::ACCOUNT:role/llz-cnd-task-role",
+    "environment": [
+        {
+            "name": "SPRING_PROFILES_ACTIVE",
+            "value": "dev"
+        }
+    ]
+}
+```
+
+**📋 Documentação Completa**: Ver arquivo `CERTIFICADO_AWS_SECURITY.md` para implementação detalhada.
+
+#### Contas AWS Configuradas
+- **DEV**: 444301769287 (sandbox@llzgarantidora.com.br)
+- **HML**: 770248317149 (hml@llzgarantidora.com.br)
+- **PRD**: 756241603306 (prd@llzgarantidora.com.br)
+
+#### Plano de Migração
+1. **Fase 1**: Preparação AWS (1 dia)
+2. **Fase 2**: Desenvolvimento (2 dias)
+3. **Fase 3**: Testes (1 dia)
+4. **Fase 4**: Deploy (1 dia)
+
+**Total**: 5 dias para implementação completa com máxima segurança.
+
+---
+
 ## 💾 ESTRUTURA DE DADOS - TABELA `unidade_cnd`
 
 ### Schema da Tabela
@@ -701,15 +780,6 @@ curl -X POST "http://localhost:8080/api/cnd/emitir/1" \
 - **API Base**: http://localhost:8080/api/cnd
 - **Swagger**: http://localhost:8080/swagger-ui.html
 - **Banco**: localhost:5432 (cnd_mvp/cnd_user/cnd_pass)
-
----
-
-## 📞 SUPORTE E CONTATO
-
-Para dúvidas técnicas ou demonstrações adicionais:
-- **Equipe de Desenvolvimento**: TI LLZ Garantidora
-- **Documentação**: Este arquivo + README.md
-- **Código Fonte**: Disponível no repositório do projeto
 
 ---
 
