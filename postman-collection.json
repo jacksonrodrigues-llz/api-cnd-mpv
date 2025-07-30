@@ -1,0 +1,191 @@
+{
+  "info": {
+    "name": "API CND MVP",
+    "description": "Collection para testar a API de Certidão Negativa de Débitos",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/cnd",
+      "type": "string"
+    },
+    {
+      "key": "codigoValidacao",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Emitir CND",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    const response = pm.response.json();",
+              "    pm.collectionVariables.set('codigoValidacao', response.codigoValidacao);",
+              "    pm.test('CND emitida com sucesso', function () {",
+              "        pm.expect(response.codigoValidacao).to.not.be.empty;",
+              "        pm.expect(response.status).to.equal('PROCESSANDO');",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comAssinatura\": false,\n  \"comPeriodo\": true,\n  \"canalEmissao\": \"WEB\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/emitir/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["emitir", "1"]
+        },
+        "description": "Emite uma CND para a unidade ID 1"
+      }
+    },
+    {
+      "name": "2. Validar CND",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('CND validada com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.codigoValidacao).to.not.be.empty;",
+              "    pm.expect(response.valido).to.be.a('boolean');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/validar/{{codigoValidacao}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["validar", "{{codigoValidacao}}"]
+        },
+        "description": "Valida uma CND pelo código de validação"
+      }
+    },
+    {
+      "name": "3. Download CND",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Download realizado com sucesso', function () {",
+              "    pm.expect(pm.response.code).to.equal(200);",
+              "    pm.expect(pm.response.headers.get('Content-Type')).to.equal('application/pdf');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/download/{{codigoValidacao}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["download", "{{codigoValidacao}}"]
+        },
+        "description": "Faz download do PDF da CND"
+      }
+    },
+    {
+      "name": "4. Validar Hash",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Hash validado', function () {",
+              "    pm.expect(pm.response.json()).to.be.a('boolean');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "\"hash_do_documento_aqui\""
+        },
+        "url": {
+          "raw": "{{baseUrl}}/validar-hash/{{codigoValidacao}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["validar-hash", "{{codigoValidacao}}"]
+        },
+        "description": "Valida o hash de um documento CND"
+      }
+    },
+    {
+      "name": "5. Emitir CND - Unidade 2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comAssinatura\": false,\n  \"comPeriodo\": false,\n  \"canalEmissao\": \"WEB\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/emitir/2",
+          "host": ["{{baseUrl}}"],
+          "path": ["emitir", "2"]
+        },
+        "description": "Emite uma CND para a unidade ID 2 sem período"
+      }
+    },
+    {
+      "name": "6. Teste Anti-Fraude",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comAssinatura\": false,\n  \"comPeriodo\": true,\n  \"canalEmissao\": \"WEB\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/emitir/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["emitir", "1"]
+        },
+        "description": "Execute múltiplas vezes para testar o controle anti-fraude"
+      }
+    }
+  ]
+}
